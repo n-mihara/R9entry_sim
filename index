@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R8入試結果分析 ＆ R9シミュレーター</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', sans-serif; background-color: #f8fafc; }
+        .table-container { max-height: 60vh; overflow-y: auto; }
+        th { position: sticky; top: 0; background-color: #f1f5f9; z-index: 10; }
+        .sticky-col { position: sticky; left: 0; background-color: #ffffff; z-index: 20; border-right: 2px solid #e2e8f0; }
+        th.sticky-col { z-index: 30; background-color: #f1f5f9; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+<div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+    <!-- メインヘッダー -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-950 flex items-center">
+                    <span class="bg-indigo-600 text-white p-2 rounded-lg mr-3 shadow-md shadow-indigo-100">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    </span>
+                    R8入試結果・R9年度シミュレーター
+                </h1>
+                <p class="text-sm text-slate-500 mt-1 font-medium">叡智コース新設、出願基準変更（アドバンストBH20、アグレッシブABH廃止）、手動の「出願調整率（±%）」に対応したR9シミュレーターです。</p>
+            </div>
+            
+            <div class="w-full md:w-auto">
+                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">CSVファイル（UTF-8）の読み込み</label>
+                <input type="file" id="csvFileInput" accept=".csv" class="block w-full text-sm text-slate-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-md file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-indigo-50 file:text-indigo-700
+                    hover:file:bg-indigo-100 cursor-pointer
+                "/>
+            </div>
+        </div>
+        
+        <div id="statusMessage" class="mt-4 text-sm p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center hidden">
+            <!-- 読込完了メッセージ -->
+        </div>
+    </div>
+
+    <!-- メインコンテンツ (データ読み込み後に表示) -->
+    <div id="mainDashboard" class="hidden space-y-6">
+        
+        <!-- タブ選択 -->
+        <div class="flex flex-wrap border-b border-slate-200 bg-white rounded-t-xl px-4 pt-2 shadow-sm">
+            <button onclick="switchTab('report')" id="tabBtn-report" class="px-5 py-3 font-bold text-sm border-b-2 border-indigo-600 text-indigo-600 transition-all flex items-center gap-2">
+                📊 各コース・内申クロス集計
+            </button>
+            <button onclick="switchTab('area')" id="tabBtn-area" class="px-5 py-3 font-medium text-sm text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition-all flex items-center gap-2">
+                🗺️ 地区別実績集計
+            </button>
+            <button onclick="switchTab('advancedSim')" id="tabBtn-advancedSim" class="px-5 py-3 font-bold text-sm text-indigo-500 border-b-2 border-transparent hover:text-indigo-700 transition-all flex items-center gap-2">
+                🚀 来年度シミュレーター
+            </button>
+        </div>
+
+        <!-- タブ1: クロス集計レポート -->
+        <div id="tabContent-report" class="space-y-6">
+            <div class="bg-white rounded-b-xl shadow-sm border-x border-b border-slate-200 p-6">
+                <!-- 絞り込み条件 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">対象出願コース</label>
+                        <select id="courseSelect" onchange="onCourseChange()" class="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border bg-white">
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">入試区分</label>
+                        <select id="examTypeSelect" onchange="generateReport()" class="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border bg-white">
+                            <option value="all">すべて（合算）</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">加点後内申の参照先列</label>
+                        <select id="adjScoreSelect" onchange="generateReport()" class="block w-full pl-3 pr-10 py-2 text-sm border-slate-300 focus:ring-indigo-500 focus:border-indigo-500 rounded-md border bg-white font-mono text-indigo-700 font-semibold">
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+                    <h2 id="tableTitle" class="text-lg font-bold text-slate-900">集計結果</h2>
+                    <div class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full border border-indigo-200 font-medium">
+                        出願総数: <span id="totalCount" class="font-bold text-sm">0</span> 名
+                    </div>
+                </div>
+                
+                <div class="table-container rounded-lg border border-slate-200 shadow-sm overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-700">
+                                <th scope="col" class="sticky-col px-4 py-3 text-center text-xs font-bold uppercase tracking-wider">
+                                    内申点
+                                </th>
+                                <th scope="col" class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider border-l border-slate-200">
+                                    出願人数<br><span class="text-[10px] font-normal text-slate-500">(加点前内申 5科)</span>
+                                </th>
+                                <th scope="col" class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-indigo-50/50 text-indigo-950">
+                                    出願人数<br><span class="text-[10px] font-bold text-indigo-600">(加点後内申ベース)</span>
+                                </th>
+                                <th scope="col" class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-emerald-50/50 text-emerald-950">
+                                    合格者数<br><span class="text-[10px] font-normal text-slate-500">(スライド含む合計)</span>
+                                </th>
+                                <th scope="col" class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-rose-50/50 text-rose-950">
+                                    入学手続者数<br><span class="text-[10px] font-normal text-slate-500">(入学者数)</span>
+                                </th>
+                                <th scope="col" class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-slate-100 text-slate-800">
+                                    歩留まり率<br><span class="text-[10px] font-normal text-slate-500">(手続 / 合格)</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="bg-white divide-y divide-slate-200">
+                        </tbody>
+                        <tfoot id="tableFoot" class="bg-slate-50 font-bold border-t-2 border-slate-300">
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- タブ2: 地区別実績集計 -->
+        <div id="tabContent-area" class="space-y-6 hidden">
+            <div class="bg-white rounded-b-xl shadow-sm border-x border-b border-slate-200 p-6">
+                <!-- 絞り込み条件 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">対象出願コース</label>
+                        <select id="areaCourseSelect" onchange="onAreaCourseChange()" class="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border bg-white">
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">入試区分</label>
+                        <select id="areaExamTypeSelect" onchange="generateAreaReport()" class="block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border bg-white">
+                            <option value="all">すべて（合算）</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">内申点の基準列</label>
+                        <select id="areaScoreTypeSelect" onchange="generateAreaReport()" class="block w-full pl-3 pr-10 py-2 text-sm border-slate-300 focus:ring-indigo-500 focus:border-indigo-500 rounded-md border bg-white font-mono text-indigo-700 font-semibold">
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900">🗺️ 地区別・内申ドリルダウン集計</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">※地区名をクリックすると、その地区における<b>内申点別の内訳情報</b>が表示されます。</p>
+                    </div>
+                    <div class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full border border-indigo-200 font-medium">
+                        集計対象総数: <span id="areaTotalCount" class="font-bold text-sm">0</span> 名
+                    </div>
+                </div>
+
+                <div class="table-container rounded-lg border border-slate-200 shadow-sm overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-700">
+                                <th scope="col" class="sticky-col px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">
+                                    地区名 / 内申内訳 (展開可)
+                                </th>
+                                <th scope="col" class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider border-l border-slate-200">
+                                    出願シェア ＆ 出願人数
+                                </th>
+                                <th scope="col" class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-emerald-50/50 text-emerald-950">
+                                    合格者数
+                                </th>
+                                <th scope="col" class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-rose-50/50 text-rose-950">
+                                    入学手続者数
+                                </th>
+                                <th scope="col" class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-slate-100 text-slate-800">
+                                    歩留まり率<br><span class="text-[10px] font-normal text-slate-500">(手続 / 合格)</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="areaTableBody" class="bg-white divide-y divide-slate-200">
+                        </tbody>
+                        <tfoot id="areaTableFoot" class="bg-slate-50 font-bold border-t-2 border-slate-300">
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- タブ3: 来年度シミュレーター -->
+        <div id="tabContent-advancedSim" class="space-y-6 hidden">
+            <div class="bg-white rounded-b-xl shadow-sm border-x border-b border-slate-200 p-6">
+                <!-- 条件確認パネル -->
+                <div class="bg-indigo-50 border border-indigo-150 rounded-xl p-5 mb-6 text-sm">
+                    <h3 class="font-bold text-indigo-950 mb-3 flex items-center text-base">
+                        <svg class="w-5 h-5 mr-1.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        来年度(R9) 移行・募集設計シミュレーション条件
+                    </h3>
+                    <div class="text-indigo-900 leading-relaxed font-semibold">
+                        <ul class="list-disc pl-5 space-y-2">
+                            <li><span class="font-bold text-indigo-950">移行１：</span>アグレッシブB/H出願者の内、内申18以上の<span class="font-bold">10%</span>が、アドバンストAで出願。</li>
+                            <li><span class="font-bold text-indigo-950">移行２：</span>アグレッシブA出願者の内、内申18以上の全員(100%)が、アドバンストAで出願。</li>
+                            <li><span class="font-bold text-indigo-950">移行３：</span>アドバンストB/H出願者の内、アド1項目加点後が19でかつ、ハイパー1項目加点後内申20以上の生徒の<span class="font-bold">15%</span>が、叡智AまたはハイパーAで出願。</li>
+                            <li><span class="font-bold text-indigo-950">移行４：</span>アドバンストB/H出願者の内、加点後内申19の生徒で（上記３以外）の<span class="font-bold">10%</span>が、アドバンストAで出願。</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 移行実績カウンター -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 text-center shadow-inner">
+                    <div class="bg-white p-3 rounded-lg border border-slate-100">
+                        <span class="text-[10px] text-slate-500 font-bold block">【移行1】アグB/H ➔ アドA (1割)</span>
+                        <span class="text-lg font-bold text-indigo-600" id="mig1Count">0 名</span>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border border-slate-100">
+                        <span class="text-[10px] text-slate-500 font-bold block">【移行2】アグA ➔ アドA (全員)</span>
+                        <span class="text-lg font-bold text-indigo-600" id="mig2Count">0 名</span>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border border-slate-100">
+                        <span class="text-[10px] text-slate-500 font-bold block">【移行3】アドB/H ➔ 叡智/ハイパA (1.5割)</span>
+                        <span class="text-lg font-bold text-indigo-600" id="mig3Count">0 名</span>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border border-slate-100">
+                        <span class="text-[10px] text-slate-500 font-bold block">【移行4】アドB/H ➔ アドA (1割)</span>
+                        <span class="text-lg font-bold text-indigo-600" id="mig4Count">0 名</span>
+                    </div>
+                </div>
+
+                <!-- コース別進捗と全体要約 -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                    <!-- 全体要約 -->
+                    <div class="bg-slate-900 text-white p-5 rounded-xl flex flex-col justify-between">
+                        <div>
+                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">R9年度入学者 総合予測</span>
+                            <div class="mt-3">
+                                <span class="text-4xl font-extrabold" id="advSimTotalEnrolled">0</span>
+                                <span class="text-sm font-medium text-slate-400 ml-1">名 / 定員 600名</span>
+                            </div>
+                            <div class="mt-2 text-xs text-slate-400" id="advSimTotalDiff">
+                                前年度（R8）手続き実績比: -
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-4 border-t border-slate-800 text-xs text-slate-400 leading-relaxed">
+                            <span id="targetMessage">※出願基準変更により、全体の出願数は減少しますが、A推薦への移行を促し、630名の入学を目指します。</span>
+                        </div>
+                    </div>
+
+                    <!-- コース別人数 -->
+                    <div class="lg:col-span-2 bg-white border border-slate-200 p-5 rounded-xl shadow-sm">
+                        <h4 class="font-bold text-slate-900 text-sm mb-4 border-b pb-2 flex justify-between">
+                            <span>🏫 R9コース別・区分（A, B, C, H, FD, FH, T）別 想定人数内訳 ＆ 手続調整（±名）</span>
+                            <span class="text-xs text-slate-400 font-normal">※表記：想定出願数 (最終手続き想定数) [調整率]</span>
+                        </h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-5 gap-3" id="advSimCourseList">
+                            <!-- JSで挿入 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 地区別A, B, C, H, FD, FH, T マトリクス -->
+                <div>
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-3">
+                        <h3 class="text-lg font-bold text-slate-950 flex items-center">
+                            <svg class="w-5 h-5 mr-1.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            来年度(R9) 地区別の A・B・C・H・FD・FH・T 想定出願人数・手続き数マトリクス
+                        </h3>
+                        
+                        <!-- 地区別テーブル用のコース絞り込みプルダウン -->
+                        <div class="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+                            <label class="font-bold text-slate-700">🗺️ 表示コース絞り込み:</label>
+                            <select id="advSimAreaCourseSelect" onchange="runAdvancedSimulation()" class="border rounded p-1 font-bold bg-white text-indigo-700">
+                                <option value="all" selected>すべてのコース（合算）</option>
+                                <option value="叡智">叡智コース</option>
+                                <option value="ハイパー">ハイパーコース</option>
+                                <option value="アドバンスト">アドバンストコース</option>
+                                <option value="アグレッシブ">アグレッシブコース</option>
+                                <option value="アスリート">アスリートコース</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container rounded-lg border border-slate-200 shadow-sm overflow-x-auto">
+                        <table class="min-w-full divide-y divide-slate-200 text-sm text-center">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-700">
+                                    <th scope="col" class="sticky-col px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">
+                                        地区名
+                                    </th>
+                                    <th scope="col" class="px-3 py-3 text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-indigo-50/20 text-indigo-900">
+                                        A想定<br><span class="text-[9px] font-normal text-indigo-600">(叡智/普通A)</span>
+                                    </th>
+                                    <th scope="col" class="px-3 py-3 text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-blue-50/20 text-blue-900">
+                                        B想定
+                                    </th>
+                                    <th scope="col" class="px-3 py-3 text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-teal-50/20 text-teal-900">
+                                        C想定
+                                    </th>
+                                    <th scope="col" class="px-3 py-3 text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-emerald-50/20 text-emerald-950">
+                                        H想定
+                                    </th>
+                                    <th scope="col" class="px-3 py-3 text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-amber-50/20 text-amber-900">
+                                        FD想定
+                                    </th>
+                                    <th scope="col" class="px-3 py-3 text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-orange-50/20 text-orange-900">
+                                        FH想定
+                                    </th>
+                                    <th scope="col" class="px-3 py-3 text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-purple-50/20 text-purple-900">
+                                        T想定<br><span class="text-[9px] font-normal text-purple-600">(ｱｽﾘｰﾄ専用)</span>
+                                    </th>
+                                    <th scope="col" class="px-4 py-3 text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-slate-100 font-bold">
+                                        想定出願総数
+                                    </th>
+                                    <th scope="col" class="px-4 py-3 text-xs font-bold uppercase tracking-wider border-l border-slate-200 bg-rose-50 text-rose-950 font-bold">
+                                        想定手続数<br><span class="text-[9px] font-normal text-rose-600">(実績比差)</span>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="advSimTableBody" class="bg-white divide-y divide-slate-200">
+                                <!-- JSで動的レンダリング -->
+                            </tbody>
+                            <tfoot id="advSimTableFoot" class="bg-slate-50 font-bold border-t-2 border-slate-300">
+                                <!-- 動的合計 -->
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    let rawData = [];
+    let headers = [];
+    let activeTab = 'report';
+    let expandedAreas = new Set(); 
+    
+    // 来年度想定手続きの増減人数キャッシュ (各コース・区分別の手動アジャスト値、初期は0名)
+    let simAdjustments = {};
+
+    function getSimAdjustment(course, cat) {
+        let key = course + '-' + cat;
+        if (simAdjustments[key] === undefined) {
+            simAdjustments[key] = 0;
+        }
+        return simAdjustments[key];
+    }
+
+    function updateSimAdjustment(course, cat, val) {
+        let key = course + '-' + cat;
+        simAdjustments[key] = parseInt(val) || 0;
+        runAdvancedSimulation(); // 手動更新時に高度シミュレーターを再計算
+    }
+
+    // UI要素の取得
+    const fileInput = document.getElementById('csvFileInput');
+    const statusMessage = document.getElementById('statusMessage');
+    const mainDashboard = document.getElementById('mainDashboard');
+    const courseSelect = document.getElementById('courseSelect');
+    const examTypeSelect = document.getElementById('examTypeSelect');
+    const adjScoreSelect = document.getElementById('adjScoreSelect');
+    const tableBody = document.getElementById('tableBody');
+    const tableFoot = document.getElementById('tableFoot');
+    const tableTitle = document.getElementById('tableTitle');
+    const totalCountSpan = document.getElementById('totalCount');
+
+    // 地区用UI要素
+    const areaCourseSelect = document.getElementById('areaCourseSelect');
+    const areaExamTypeSelect = document.getElementById('areaExamTypeSelect');
+    const areaTableBody = document.getElementById('areaTableBody');
+    const areaTableFoot = document.getElementById('areaTableFoot');
+    const areaTotalCountSpan = document.getElementById('areaTotalCount');
+    const areaScoreTypeSelect = document.getElementById('areaScoreTypeSelect');
+    
+    // 高度予測テーブル用のコース絞り込み要素
+    const advSimAreaCourseSelect = document.getElementById('advSimAreaCourseSelect');
+
+    // 確定列マッピング（クレンジング後の列名基準）
+    const keysMap = {
+        course: '出願コース',
+        examType: '入試区分',
+        rawScore: '5科',
+        status: '合格発表時合否ST',
+        isEnrolled: '入学者',
+        area: '地区'
+    };
+
+    // CSVファイルの読み込み
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        statusMessage.classList.remove('hidden');
+        statusMessage.innerHTML = '<span class="text-indigo-600 font-medium animate-pulse">CSVファイルを解析しています...</span>';
+        
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            let text = evt.target.result;
+            
+            // 【超堅牢・文字化け自動フォールバック】
+            if (text.includes('\uFFFD')) {
+                const sjisReader = new FileReader();
+                sjisReader.onload = function(sjisEvt) {
+                    processCSVText(sjisEvt.target.result);
+                };
+                sjisReader.readAsText(file, "Shift_JIS");
+            } else {
+                let firstChunk = text.slice(0, 100);
+                if (!firstChunk.includes('性') && !firstChunk.includes('In') && !firstChunk.includes('在籍') && !firstChunk.includes('出願') && !firstChunk.includes('コ')) {
+                    const sjisReader = new FileReader();
+                    sjisReader.onload = function(sjisEvt) {
+                        processCSVText(sjisEvt.target.result);
+                    };
+                    sjisReader.readAsText(file, "Shift_JIS");
+                } else {
+                    processCSVText(text);
+                }
+            }
+        };
+        reader.readAsText(file, "UTF-8");
+    });
+
+    // CSVのパースとクレンジング
+    function processCSVText(text) {
+        let parsed = Papa.parse(text, { skipEmptyLines: 'greedy' });
+        let rows = parsed.data;
+        
+        if (!rows || rows.length === 0) {
+            statusMessage.innerHTML = '<span class="text-rose-600 font-bold">CSVファイルが空か、読み取りに失敗しました。</span>';
+            return;
+        }
+
+        let headerRowIndex = 0;
+        let maxHits = -1;
+        const keywords = ['性', '在籍', 'コース', '5科', '合格', '入学者', '受験番号'];
+        
+        for (let i = 0; i < Math.min(rows.length, 12); i++) {
+            let hits = 0;
+            rows[i].forEach(cell => {
+                let cellStr = String(cell);
+                keywords.forEach(kw => {
+                    if (cellStr.includes(kw)) hits++;
+                });
+            });
+            if (hits > maxHits) {
+                maxHits = hits;
+                headerRowIndex = i;
+            }
+        }
+
+        // 列名のクレンジング（スペース、改行、ダブルクォーテーションを徹底除去）
+        headers = rows[headerRowIndex].map((h, idx) => {
+            return String(h).trim().replace(/[\s\r\n"\u200B]+/g, '');
+        });
+
+        // 受験生データのオブジェクト配列化
+        rawData = [];
+        for (let i = headerRowIndex + 1; i < rows.length; i++) {
+            let r = rows[i];
+            if (!r || r.length === 0 || (r.length === 1 && r[0] === '')) continue;
+            
+            let obj = {};
+            headers.forEach((h, idx) => {
+                let cellValue = r[idx] !== undefined ? String(r[idx]).trim() : '';
+                obj[h] = cellValue.replace(/^["']|["']$/g, '').trim();
+            });
+            rawData.push(obj);
+        }
+
+        if (rawData.length === 0) {
+            statusMessage.innerHTML = '<span class="text-rose-600 font-bold">生徒のデータ行を検出できませんでした。</span>';
+            return;
+        }
+
+        setupAdjScoreSelectorOptions();
+
+        statusMessage.innerHTML = '<span class="text-emerald-700 font-bold">✨ CSV読込完了（正常解析 / 受験生総数: ' + rawData.length + '名分）</span>';
+        
+        mainDashboard.classList.remove('hidden');
+        setupFilterOptions();
+        onCourseChange(); 
+        onAreaCourseChange(); 
+        runAdvancedSimulation(); 
+    }
+
+    // A, B, C, H, FD, FH, T の統合カテゴリ判別
+    function getCategorizedType(row, currentCourseName) {
+        let examTypeCol = headers.find(h => h.includes('入試区分')) || '入試区分';
+        let examType = String(row[examTypeCol] || '').trim();
+        let testCol = headers.find(h => h.includes('試験名')) || '試験名';
+        let testName = String(row[testCol] || '').trim();
+        
+        if (currentCourseName.includes('アスリート')) {
+            return 'T';
+        }
+
+        if (examType === 'A' || testName.includes('A推薦') || examType.includes('A推薦')) return 'A';
+        if (examType === 'B' || testName.includes('B推薦') || examType.includes('B推薦')) return 'B';
+        if (examType === 'C' || testName.includes('C推薦') || examType.includes('C推薦')) return 'C';
+        if (examType === 'H' || examType.includes('併願優遇') || testName.includes('併願優遇')) return 'H';
+        if (testName.includes('第一志望') || examType.includes('第一志望') || examType === 'FD' || testName.includes('FD')) return 'FD';
+        if (testName.includes('併願') || examType.includes('併願') || examType === 'FH' || testName.includes('FH')) return 'FH';
+
+        return 'その他';
+    }
+
+    // 加点後内申のプルダウン構築
+    function setupAdjScoreSelectorOptions() {
+        adjScoreSelect.innerHTML = '';
+        areaScoreTypeSelect.innerHTML = '';
+        
+        const availableCols = [
+            { key: 'ハイパー1項目加点', label: 'ハイパー1項目加点 (BL列相当)' },
+            { key: 'アドバンスト2項目加点', label: 'アドバンスト2項目加点 (BK列相当)' },
+            { key: 'アドバンスト1項目加点', label: 'アドバンスト1項目加点 (BJ列相当)' }
+        ];
+
+        availableCols.forEach(col => {
+            let actualColName = headers.find(h => h.includes(col.key));
+            if (actualColName) {
+                const opt1 = document.createElement('option');
+                opt1.value = actualColName;
+                opt1.textContent = col.label;
+                adjScoreSelect.appendChild(opt1);
+
+                const opt2 = document.createElement('option');
+                opt2.value = actualColName;
+                opt2.textContent = col.label;
+                areaScoreTypeSelect.appendChild(opt2);
+            }
+        });
+
+        const fallbackCol = headers.find(h => h === '5科');
+        const fallbackOpt1 = document.createElement('option');
+        fallbackOpt1.value = fallbackCol;
+        fallbackOpt1.textContent = '加点前5科 (加点なし)';
+        adjScoreSelect.appendChild(fallbackOpt1);
+
+        const fallbackOpt2 = document.createElement('option');
+        fallbackOpt2.value = fallbackCol;
+        fallbackOpt2.textContent = '加点前5科 (加点なし)';
+        areaScoreTypeSelect.appendChild(fallbackOpt2);
+    }
+
+    // フィルター用セレクトボックスの設定
+    function setupFilterOptions() {
+        let courses = new Set();
+        let examTypes = new Set();
+
+        rawData.forEach(row => {
+            let courseCol = headers.find(h => h === '出願コース' || h.includes('コース')) || '出願コース';
+            if (row[courseCol]) courses.add(row[courseCol].trim());
+            let examTypeCol = headers.find(h => h === '入試区分' || h.includes('入試区分')) || '入試区分';
+            if (row[examTypeCol]) {
+                let typeClean = row[examTypeCol].trim().replace(/【.*?】/g, '').trim();
+                row['_cleanExamType'] = typeClean;
+                examTypes.add(typeClean);
+            }
+        });
+
+        courseSelect.innerHTML = '';
+        areaCourseSelect.innerHTML = '<option value="all">すべてのコース（合算）</option>';
+
+        Array.from(courses).sort().forEach(c => {
+            if (c) {
+                const opt1 = document.createElement('option');
+                opt1.value = c;
+                opt1.textContent = c;
+                courseSelect.appendChild(opt1);
+
+                const opt2 = document.createElement('option');
+                opt2.value = c;
+                opt2.textContent = c;
+                areaCourseSelect.appendChild(opt2);
+            }
+        });
+
+        examTypeSelect.innerHTML = '<option value="all">すべて（合算）</option>';
+        areaExamTypeSelect.innerHTML = '<option value="all">すべて（合算）</option>';
+
+        Array.from(examTypes).sort().forEach(t => {
+            if (t) {
+                const opt1 = document.createElement('option');
+                opt1.value = t;
+                opt1.textContent = t;
+                examTypeSelect.appendChild(opt1);
+
+                const opt2 = document.createElement('option');
+                opt2.value = t;
+                opt2.textContent = t;
+                areaExamTypeSelect.appendChild(opt2);
+            }
+        });
+    }
+
+    // コース選択が変わった際、参照すべき「加点後内申」の初期値を自動で切り替える (クロス集計タブ)
+    function onCourseChange() {
+        const selectedCourse = courseSelect.value;
+        let targetValue = '';
+
+        if (selectedCourse.includes('ハイパー')) {
+            targetValue = headers.find(h => h.includes('ハイパー1項目加点'));
+        } else if (selectedCourse.includes('アドバンスト') || selectedCourse.includes('アグレッシブ')) {
+            targetValue = headers.find(h => h.includes('アドバンスト2項目加点'));
+        } else if (selectedCourse.includes('アスリート')) {
+            targetValue = headers.find(h => h.includes('アドバンスト1項目加点'));
+        }
+
+        if (targetValue && Array.from(adjScoreSelect.options).some(opt => opt.value === targetValue)) {
+            adjScoreSelect.value = targetValue;
+        }
+
+        generateReport();
+    }
+
+    // コース選択が変わった際、参照すべき「加点後内申」の初期値を自動で切り替える (地区別集計タブ)
+    function onAreaCourseChange() {
+        const selectedCourse = areaCourseSelect.value;
+        let targetValue = '';
+
+        if (selectedCourse === 'all') {
+            targetValue = headers.find(h => h.includes('アドバンスト2項目加点'));
+        } else if (selectedCourse.includes('ハイパー')) {
+            targetValue = headers.find(h => h.includes('ハイパー1項目加点'));
+        } else if (selectedCourse.includes('アドバンスト') || selectedCourse.includes('アグレッシブ')) {
+            targetValue = headers.find(h => h.includes('アドバンスト2項目加点'));
+        } else if (selectedCourse.includes('アスリート')) {
+            targetValue = headers.find(h => h.includes('アドバンスト1項目加点'));
+        }
+
+        if (targetValue && Array.from(areaScoreTypeSelect.options).some(opt => opt.value === targetValue)) {
+            areaScoreTypeSelect.value = targetValue;
+        }
+
+        generateAreaReport();
+    }
+
+    // レポート（クロス集計表）の動的レンダリング
+    function generateReport() {
+        const targetCourse = courseSelect.value;
+        const targetType = examTypeSelect.value;
+        const adjScoreCol = adjScoreSelect.value;
+        
+        tableTitle.textContent = '【' + targetCourse + '】 ' + (targetType === 'all' ? '全入試区分 合算' : targetType) + ' 集計表';
+
+        const filtered = rawData.filter(row => {
+            let courseCol = headers.find(h => h === '出願コース' || h.includes('コース')) || '出願コース';
+            let rowCourse = row[courseCol];
+            if (rowCourse !== targetCourse) return false;
+            if (targetType !== 'all' && row['_cleanExamType'] !== targetType) return false;
+            
+            let appCol = headers.find(h => h.includes('出願かどうか'));
+            if (appCol && row[appCol] && !row[appCol].includes('出願')) return false;
+            
+            return true;
+        });
+
+        totalCountSpan.textContent = filtered.length;
+
+        let stats = {};
+        for(let i = 27; i >= 10; i--) {
+            stats[i] = { rawApp: 0, adjApp: 0, pass: 0, enroll: 0 };
+        }
+
+        filtered.forEach(row => {
+            let rawScoreCol = headers.find(h => h === '5科' || h.includes('5科')) || '5科';
+            let rScore = parseInt(row[rawScoreCol]) || 0;
+            let aScore = parseInt(row[adjScoreCol]) || rScore;
+            
+            if (rScore >= 10 && rScore <= 27) {
+                stats[rScore].rawApp++;
+            }
+            if (aScore >= 10 && aScore <= 27) {
+                stats[aScore].adjApp++;
+                
+                let statusCol = headers.find(h => h === '合格発表時合否ST' || h.includes('合否ST') || h.includes('合否')) || '合格発表時合否ST';
+                let st = row[statusCol] ? row[statusCol].trim() : '';
+                if (st !== '' && !st.includes('不合格') && !st.includes('欠席') && !st.includes('XX') && st !== '不') {
+                    stats[aScore].pass++;
+                    
+                    let enrolledCol = headers.find(h => h === '入学者' || h.includes('入学者')) || '入学者';
+                    if (row[enrolledCol] == '1' || String(row[enrolledCol]).includes('1')) {
+                        stats[aScore].enroll++;
+                    }
+                }
+            }
+        });
+
+        tableBody.innerHTML = '';
+        let tRaw = 0, tAdj = 0, tPass = 0, tEnroll = 0;
+
+        for (let i = 27; i >= 10; i--) {
+            let d = stats[i];
+            if (d.rawApp === 0 && d.adjApp === 0) continue;
+
+            tRaw += d.rawApp;
+            tAdj += d.adjApp;
+            tPass += d.pass;
+            tEnroll += d.enroll;
+
+            let rate = d.pass > 0 ? ((d.enroll / d.pass) * 100).toFixed(1) + '%' : '-';
+
+            let tr = document.createElement('tr');
+            tr.className = "hover:bg-slate-50 border-b border-slate-100";
+            tr.innerHTML = `
+                <td class="sticky-col px-4 py-3 text-center font-bold text-slate-700 bg-white">${i}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200">${d.rawApp || '-'}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-indigo-50/40 font-semibold text-indigo-950">${d.adjApp || '-'}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-emerald-50/30 text-emerald-950">${d.pass || '-'}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-rose-50/30 text-rose-950">${d.enroll || '-'}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 font-medium text-slate-600 bg-slate-50/50">${rate}</td>
+            `;
+            tableBody.appendChild(tr);
+        }
+
+        let tRate = tPass > 0 ? ((tEnroll / tPass) * 100).toFixed(1) + '%' : '-';
+        tableFoot.innerHTML = `
+            <tr class="bg-slate-100 text-slate-900">
+                <td class="sticky-col px-4 py-3 text-center font-bold bg-slate-100">合計</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200">${tRaw}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-indigo-100/60">${tAdj}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-emerald-100/60">${tPass}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-rose-100/60">${tEnroll}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-slate-200/60">${tRate}</td>
+            </tr>
+        `;
+    }
+
+    // アコーディオンの開閉制御
+    function toggleAreaRow(areaName) {
+        if (expandedAreas.has(areaName)) {
+            expandedAreas.delete(areaName);
+        } else {
+            expandedAreas.add(areaName);
+        }
+        generateAreaReport(); 
+    }
+
+    // 🗺️ 地区別実績集計の生成
+    function generateAreaReport() {
+        const targetCourse = areaCourseSelect.value;
+        const targetType = areaExamTypeSelect.value;
+        const scoreTypeCol = areaScoreTypeSelect.value || keysMap.rawScore;
+
+        const filtered = rawData.filter(row => {
+            let courseCol = headers.find(h => h === '出願コース' || h.includes('コース')) || '出願コース';
+            let rowCourse = row[courseCol];
+            if (targetCourse !== 'all' && rowCourse !== targetCourse) return false;
+            if (targetType !== 'all' && row['_cleanExamType'] !== targetType) return false;
+            
+            let appCol = headers.find(h => h.includes('出願かどうか'));
+            if (appCol && row[appCol] && !row[appCol].includes('出願')) return false;
+            
+            return true;
+        });
+
+        areaTotalCountSpan.textContent = filtered.length;
+
+        let areaStats = {};
+
+        filtered.forEach(row => {
+            let areaName = row[keysMap.area] ? row[keysMap.area].trim() : '';
+            if (areaName === '') {
+                areaName = 'その他・管外・不明';
+            }
+
+            let scoreVal = parseInt(row[scoreTypeCol]) || parseInt(row[keysMap.rawScore]) || 0;
+
+            if (!areaStats[areaName]) {
+                areaStats[areaName] = {
+                    app: 0,
+                    pass: 0,
+                    enroll: 0,
+                    scores: {}
+                };
+            }
+
+            if (scoreVal >= 10 && scoreVal <= 27) {
+                if (!areaStats[areaName].scores[scoreVal]) {
+                    areaStats[areaName].scores[scoreVal] = { app: 0, pass: 0, enroll: 0 };
+                }
+            }
+
+            areaStats[areaName].app++;
+            if (scoreVal >= 10 && scoreVal <= 27) {
+                areaStats[areaName].scores[scoreVal].app++;
+            }
+
+            let statusCol = headers.find(h => h === '合格発表時合否ST' || h.includes('合否ST') || h.includes('合否')) || '合格発表時合否ST';
+            let st = row[statusCol] ? row[statusCol].trim() : '';
+            let isPassed = st !== '' && !st.includes('不合格') && !st.includes('欠席') && !st.includes('XX') && st !== '不';
+
+            if (isPassed) {
+                areaStats[areaName].pass++;
+                if (scoreVal >= 10 && scoreVal <= 27) {
+                    areaStats[areaName].scores[scoreVal].pass++;
+                }
+                
+                let enrolledCol = headers.find(h => h === '入学者' || h.includes('入学者')) || '入学者';
+                if (row[enrolledCol] == '1' || String(row[enrolledCol]).includes('1')) {
+                    areaStats[areaName].enroll++;
+                    if (scoreVal >= 10 && scoreVal <= 27) {
+                        areaStats[areaName].scores[scoreVal].enroll++;
+                    }
+                }
+            }
+        });
+
+        let areaList = Object.keys(areaStats).map(name => {
+            return {
+                name: name,
+                app: areaStats[name].app,
+                pass: areaStats[name].pass,
+                enroll: areaStats[name].enroll,
+                scores: areaStats[name].scores
+            };
+        });
+
+        areaList.sort((a, b) => b.app - a.app);
+        const maxApp = areaList.length > 0 ? areaList[0].app : 1;
+
+        areaTableBody.innerHTML = '';
+        let tApp = 0, tPass = 0, tEnroll = 0;
+
+        areaList.forEach(item => {
+            tApp += item.app;
+            tPass += item.pass;
+            tEnroll += item.enroll;
+
+            let rate = item.pass > 0 ? ((item.enroll / item.pass) * 100).toFixed(1) + '%' : '-';
+            let pctOfMax = (item.app / maxApp) * 100;
+            let isExpanded = expandedAreas.has(item.name);
+
+            let trArea = document.createElement('tr');
+            trArea.className = "hover:bg-slate-50 border-b border-slate-200 cursor-pointer transition-colors";
+            trArea.onclick = () => toggleAreaRow(item.name);
+            trArea.innerHTML = `
+                <td class="sticky-col px-4 py-3.5 font-bold text-slate-800 bg-white text-left flex items-center gap-2">
+                    <span class="text-xs text-indigo-500 font-mono transition-transform duration-200 transform ${isExpanded ? 'rotate-95' : ''}">
+                        ${isExpanded ? '▼' : '▶'}
+                    </span>
+                    <span>${item.name}</span>
+                </td>
+                <td class="px-4 py-3.5 border-l border-slate-200">
+                    <div class="flex items-center gap-3">
+                        <div class="flex-1 bg-slate-100 h-4 rounded overflow-hidden max-w-[140px] hidden sm:block">
+                            <div class="bg-indigo-600 h-full rounded" style="width: ${pctOfMax}%"></div>
+                        </div>
+                        <span class="font-bold text-slate-900">${item.app} 名</span>
+                    </div>
+                </td>
+                <td class="px-4 py-3.5 text-center border-l border-slate-200 bg-emerald-50/20 font-semibold text-emerald-950">${item.pass || '-'}</td>
+                <td class="px-4 py-3.5 text-center border-l border-slate-200 bg-rose-50/20 font-bold text-rose-950">${item.enroll || '-'}</td>
+                <td class="px-4 py-3.5 text-center border-l border-slate-200 font-bold bg-slate-50 text-indigo-700 text-sm">${rate}</td>
+            `;
+            areaTableBody.appendChild(trArea);
+
+            if (isExpanded) {
+                for (let score = 27; score >= 10; score--) {
+                    let scoreData = item.scores[score];
+                    if (!scoreData || scoreData.app === 0) continue;
+
+                    let scoreRate = scoreData.pass > 0 ? ((scoreData.enroll / scoreData.pass) * 100).toFixed(1) + '%' : '-';
+
+                    let trScore = document.createElement('tr');
+                    trScore.className = "bg-indigo-50/30 border-b border-slate-100 text-xs";
+                    trScore.innerHTML = `
+                        <td class="sticky-col px-8 py-2 text-slate-600 bg-indigo-50/20 text-left pl-10 flex items-center gap-1.5 font-medium">
+                            <span class="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                            評定 [ ${score}点 ] 内訳
+                        </td>
+                        <td class="px-4 py-2 border-l border-slate-200 text-slate-600 pl-8">
+                            出願: <span class="font-bold text-slate-800">${scoreData.app} 名</span>
+                        </td>
+                        <td class="px-4 py-2 text-center border-l border-slate-200 text-emerald-800 font-medium">${scoreData.pass || '-'} 名</td>
+                        <td class="px-4 py-2 text-center border-l border-slate-200 text-rose-800 font-bold">${scoreData.enroll || '-'} 名</td>
+                        <td class="px-4 py-2 text-center border-l border-slate-200 text-slate-600 font-semibold bg-indigo-50/10">${scoreRate}</td>
+                    `;
+                    areaTableBody.appendChild(trScore);
+                }
+            }
+        });
+
+        let tRate = tPass > 0 ? ((tEnroll / tPass) * 100).toFixed(1) + '%' : '-';
+        areaTableFoot.innerHTML = `
+            <tr class="bg-slate-100 text-slate-900 font-bold">
+                <td class="sticky-col px-4 py-3 text-left bg-slate-100">合計</td>
+                <td class="px-4 py-3 border-l border-slate-200 text-left font-bold text-slate-900">${tApp} 名</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-emerald-100/40">${tPass}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-rose-100/40">${tEnroll}</td>
+                <td class="px-4 py-3 text-center border-l border-slate-200 bg-slate-200">${tRate}</td>
+            </tr>
+        `;
+    }
+
+    // 🚀 来年度シミュレーターの実行エンジン（バグ完全改修版）
+    function runAdvancedSimulation() {
+        const validCategories = ['A', 'B', 'C', 'H', 'FD', 'FH', 'T'];
+        const selectedAreaCourse = document.getElementById('advSimAreaCourseSelect') ? document.getElementById('advSimAreaCourseSelect').value : 'all';
+        
+        let advSimCourses = {
+            '叡智': { capacity: 20, app: 0, pass: 0, enroll: 0, cats: {} },
+            'ハイパー': { capacity: 140, app: 0, pass: 0, enroll: 0, cats: {} },
+            'アドバンスト': { capacity: 320, app: 0, pass: 0, enroll: 0, cats: {} },
+            'アグレッシブ': { capacity: 40, app: 0, pass: 0, enroll: 0, cats: {} },
+            'アスリート': { capacity: 80, app: 0, pass: 0, enroll: 0, cats: {} }
+        };
+
+        // 各カテゴリの初期化
+        Object.keys(advSimCourses).forEach(k => {
+            validCategories.forEach(cat => {
+                advSimCourses[k].cats[cat] = { app: 0, enroll: 0, adjustedApp: 0, adjustedEnroll: 0 };
+            });
+        });
+
+        // 地区ごとの想定数ハッシュ
+        let areaAdvStats = {};
+
+        // 移行カウンターの初期化
+        let migCount = { 1: 0, 2: 0, 3: 0, 4: 0 };
+
+        // R8実績入学手続者
+        let r8TotalActualEnrolled = 0;
+
+        // 【超・頑健特定】列名部分一致のみを信頼し、固定インデックスの混入ズレによるエラーを完全回避
+        let colAdv2 = headers.find(h => h.includes('アドバンスト2項目加点')) || headers.find(h => h.includes('アドバンスト') && h.includes('2項目')) || '5科';
+        let colHyp1 = headers.find(h => h.includes('ハイパー1項目加点')) || headers.find(h => h.includes('ハイパー') && h.includes('1項目')) || '5科';
+        let colAdv1 = headers.find(h => h.includes('アドバンスト1項目加点')) || headers.find(h => h.includes('アドバンスト') && h.includes('1項目')) || '5科';
+        
+        // 【重要】出願かどうか列と受験番号列の正確な特定
+        let appCol = headers.find(h => h.includes('出願かどうか')) || '出願かどうか';
+        let jukenCol = headers.find(h => h.includes('受験番号')) || '受験番号';
+        let enrolledCol = headers.find(h => h === '入学者' || h.includes('入学者')) || '入学者';
+        let statusCol = headers.find(h => h === '合格発表時合否ST' || h.includes('合否ST') || h.includes('合否')) || '合格発表時合否ST';
+        let courseCol = headers.find(h => h === '出願コース' || h.includes('コース')) || '出願コース';
+
+        // ----------------------------------------------------
+        // 第一段階：移行・叡智新設・打切りロジックの適用 ＆ R8実績のカウント
+        // ----------------------------------------------------
+        rawData.forEach((row, index) => {
+            // 文字化け・スペース対策を施した出願確認
+            if (appCol && row[appCol] && !row[appCol].includes('出願')) return;
+
+            let course = String(row[courseCol] || '').trim();
+            let isEnrolled = row[enrolledCol] == '1' || String(row[enrolledCol]).includes('1');
+            let st = row[statusCol] ? row[statusCol].trim() : '';
+            let isPassed = st !== '' && !st.includes('不合格') && !st.includes('欠席') && !st.includes('XX') && st !== 'not_pass';
+
+            let areaName = row[keysMap.area] ? row[keysMap.area].trim() : 'その他・管外・不明';
+            if (areaName === '') areaName = 'その他・管外・不明';
+
+            // コース割り当て
+            let courseGroup = 'アドバンスト';
+            if (course.includes('ハイパー')) courseGroup = 'ハイパー';
+            else if (course.includes('アグレッシブ')) courseGroup = 'アグレッシブ';
+            else if (course.includes('アスリート')) courseGroup = 'アスリート';
+
+            let origCat = getCategorizedType(row, courseGroup);
+
+            if (isEnrolled) r8TotalActualEnrolled++;
+
+            // 地区別データ（R8実績）の初期化
+            if (!areaAdvStats[areaName]) {
+                areaAdvStats[areaName] = {
+                    r8: { A: 0, B: 0, C: 0, H: 0, FD: 0, FH: 0, T: 0, totalApp: 0, enroll: 0 },
+                    r9: { A: 0, B: 0, C: 0, H: 0, FD: 0, FH: 0, T: 0, totalApp: 0, enroll: 0 }
+                };
+            }
+
+            // R8実績加算（アスリートAは特別枠Tとして計上除外）
+            let r8CatForArea = origCat;
+            if (courseGroup === 'アスリート' && origCat === 'A') {
+                r8CatForArea = 'アスリート別枠'; 
+            }
+
+            // 地区別R8実績表示用の絞り込み対応
+            let r8PassesCriteria = false;
+            if (selectedAreaCourse === 'all') {
+                r8PassesCriteria = true;
+            } else if (selectedAreaCourse === '叡智') {
+                r8PassesCriteria = false;
+            } else {
+                r8PassesCriteria = (courseGroup === selectedAreaCourse);
+            }
+
+            if (r8PassesCriteria) {
+                if (validCategories.includes(r8CatForArea)) {
+                    areaAdvStats[areaName].r8[r8CatForArea]++;
+                }
+                areaAdvStats[areaName].r8.totalApp++;
+                if (isEnrolled) {
+                    areaAdvStats[areaName].r8.enroll++;
+                }
+            }
+
+            // 各種加点データの精密抽出（型エラーの安全フォールバック対応）
+            let rawScoreCol = headers.find(h => h === '5科' || h.includes('5科')) || '5科';
+            let rawScore5 = parseInt(row[rawScoreCol]) || 0; 
+            
+            let valAdv2 = parseInt(row[colAdv2]);
+            // 0の場合も加点前5科評定を適用する（未該当時フォールバック）
+            let scoreAdv2 = (isNaN(valAdv2) || valAdv2 === 0) ? rawScore5 : valAdv2;
+
+            let valHyp1 = parseInt(row[colHyp1]);
+            let scoreHyp1 = (isNaN(valHyp1) || valHyp1 === 0) ? rawScore5 : valHyp1;
+
+            let valAdv1 = parseInt(row[colAdv1]);
+            let scoreAdv1 = (isNaN(valAdv1) || valAdv1 === 0) ? rawScore5 : valAdv1;
+
+            // R9移行処理変数の初期化
+            let simCourse = courseGroup;
+            let simCat = origCat;
+            let simPassed = isPassed;
+            let simEnrolled = isEnrolled;
+            let isMigrated = false;
+
+            // 再現可能なシード乱数判定
+            let seed = parseInt(row[jukenCol]) || (index * 13 + 7);
+            let randVal = (seed * 19 + 5) % 100; // 0〜99
+
+            // アスリートはすべて新たな区分でTとし、合格・手続き100%
+            if (courseGroup === 'アスリート') {
+                simCourse = 'アスリート';
+                simCat = 'T';
+                simPassed = true;
+                simEnrolled = true;
+                isMigrated = true;
+            }
+
+            // 叡智コース新設移行: ハイパー出願者で加点前5科が24, 25の生徒
+            if (!isMigrated && courseGroup === 'ハイパー' && (rawScore5 === 24 || rawScore5 === 25)) {
+                simCourse = '叡智';
+                isMigrated = true;
+            }
+
+            // １．アグレッシブB/H出願者の内、内申18以上の10%が、アドバンストAで出願。
+            if (!isMigrated && courseGroup === 'アグレッシブ' && (origCat === 'B' || origCat === 'H') && scoreAdv2 >= 18) {
+                if (randVal < 10) { 
+                    simCourse = 'アドバンスト';
+                    simCat = 'A';
+                    simPassed = true; 
+                    simEnrolled = true; 
+                    isMigrated = true;
+                    migCount[1]++;
+                }
+            }
+            // ２．アグレッシブA出願者の内、内申18以上の全員(100%)が、アドバンストAで出願。
+            else if (!isMigrated && courseGroup === 'アグレッシブ' && origCat === 'A' && scoreAdv2 >= 18) {
+                simCourse = 'アドバンスト';
+                simCat = 'A';
+                simPassed = true;
+                simEnrolled = true;
+                isMigrated = true;
+                migCount[2]++;
+            }
+            // ３．アドバンストB/H出願者の内、アド1項目加点後が19でかつ、ハイパー1項目加点後内申20以上の生徒の15%が、叡智AまたはハイパーAで出願。
+            else if (!isMigrated && courseGroup === 'アドバンスト' && (origCat === 'B' || origCat === 'H') && scoreAdv1 === 19) {
+                if (scoreHyp1 >= 20) {
+                    if (randVal < 15) { 
+                        if (rawScore5 === 24 || rawScore5 === 25) {
+                            simCourse = '叡智';
+                        } else {
+                            simCourse = 'ハイパー';
+                        }
+                        simCat = 'A';
+                        simPassed = true;
+                        simEnrolled = true;
+                        isMigrated = true;
+                        migCount[3]++;
+                    }
+                }
+
+                // ４．アドバンストB/H出願者の内、加点後内申19の生徒で（上記３以外）の10%が、アドバンストAで出願。
+                if (!isMigrated) {
+                    if (randVal >= 15 && randVal < 25) { 
+                        simCourse = 'アドバンスト';
+                        simCat = 'A';
+                        simPassed = true;
+                        simEnrolled = true;
+                        isMigrated = true;
+                        migCount[4]++;
+                    }
+                }
+
+                // BJ加点後が19で、移行３・移行４のいずれにも選ばれなかったアドB/Hは全員「出願なし(除外)」
+                if (!isMigrated) {
+                    simCourse = 'なし';
+                    simCat = 'なし';
+                    simPassed = false;
+                    simEnrolled = false;
+                    isMigrated = true;
+                }
+            }
+
+            // アドバンストB/Hの内、BJ加点後内申が18以下の者は全員「出願なし(除外)」
+            if (!isMigrated && courseGroup === 'アドバンスト' && (origCat === 'B' || origCat === 'H') && scoreAdv1 <= 18) {
+                simCourse = 'なし';
+                simCat = 'なし';
+                simPassed = false;
+                simEnrolled = false;
+                isMigrated = true;
+            }
+
+            // アグレッシブのA, B, Hが0名となる前提（他へ移行していない本来のアグA,B,H出願者を削除）
+            let isAggEliminated = (courseGroup === 'アグレッシブ' && (origCat === 'A' || origCat === 'B' || origCat === 'H'));
+            if (!isMigrated && isAggEliminated) {
+                simCourse = 'なし';
+                simCat = 'なし';
+                simPassed = false;
+                simEnrolled = false;
+            }
+
+            // R9（来年度予測）の一時割り当て格納
+            row['_simCourse'] = simCourse;
+            row['_simCat'] = simCat;
+            row['_simPassed'] = simPassed;
+            row['_simEnrolled'] = simEnrolled;
+        });
+
+        // ----------------------------------------------------
+        // 第二段階：各コース×各区分の基本予測（調整前）集計
+        // ----------------------------------------------------
+        rawData.forEach(row => {
+            if (appCol && row[appCol] && !row[appCol].includes('出願')) return;
+            let simCourse = row['_simCourse'] || 'なし';
+            let simCat = row['_simCat'] || 'skip';
+            let simPassed = row['_simPassed'] === true;
+            let simEnrolled = row['_simEnrolled'] === true;
+
+            if (simCourse !== 'なし') {
+                advSimCourses[simCourse].app++;
+                if (validCategories.includes(simCat)) {
+                    advSimCourses[simCourse].cats[simCat].app++;
+                }
+
+                // 基本（調整前）の手続カウントを計算
+                if (simPassed && simEnrolled) {
+                    advSimCourses[simCourse].enroll++;
+                    if (validCategories.includes(simCat)) {
+                        advSimCourses[simCourse].cats[simCat].enroll++;
+                    }
+                }
+            }
+        });
+
+        // ----------------------------------------------------
+        // 第三段階：手動「手続き調整（±名）」による出願調整率（±%）の自動逆算＆反映
+        // ----------------------------------------------------
+        Object.keys(advSimCourses).forEach(cName => {
+            let data = advSimCourses[cName];
+            let accumulatedApp = 0;
+            let accumulatedEnrolled = 0;
+
+            validCategories.forEach(cat => {
+                let catData = data.cats[cat];
+                let adjustEnrollDiff = getSimAdjustment(cName, cat);
+                
+                // 出願数調整率の逆算ロジック
+                let computedAdjPct = 0;
+                if (catData.enroll > 0) {
+                    computedAdjPct = (adjustEnrollDiff / catData.enroll) * 100;
+                } else if (adjustEnrollDiff > 0) {
+                    // もともとの手続き想定数が0名で追加する場合は、無限大（計算不可）
+                    computedAdjPct = 99999; 
+                }
+
+                // 出願数のアジャスト
+                let adjustedApp = catData.app * (1 + (computedAdjPct / 100));
+                catData.adjustedApp = Math.round(adjustedApp);
+
+                // 手続き数のアジャスト
+                let adjustedEnroll = catData.enroll + adjustEnrollDiff;
+                catData.adjustedEnroll = Math.max(0, Math.round(adjustedEnroll)); // 負の数は予防
+
+                accumulatedApp += catData.adjustedApp;
+                accumulatedEnrolled += catData.adjustedEnroll;
+            });
+
+            data.app = accumulatedApp;
+            data.enroll = accumulatedEnrolled; 
+        });
+
+        // ----------------------------------------------------
+        // 第四段階：地区別マトリクスへの反映（手動出願調整後の係数を適用）
+        // ----------------------------------------------------
+        rawData.forEach(row => {
+            if (appCol && row[appCol] && !row[appCol].includes('出願')) return;
+
+            let simCourse = row['_simCourse'] || 'なし';
+            let simCat = row['_simCat'] || 'skip';
+            let simPassed = row['_simPassed'] === true;
+            let simEnrolled = row['_simEnrolled'] === true;
+
+            let areaName = row[keysMap.area] ? row[keysMap.area].trim() : '';
+            if (areaName === '') {
+                areaName = 'その他・管外・不明';
+            }
+
+            // 地区マトリクス：指定コースで絞り込み判定
+            let passesAreaCriteria = false;
+            if (selectedAreaCourse === 'all') {
+                passesAreaCriteria = true;
+            } else {
+                passesAreaCriteria = (simCourse === selectedAreaCourse);
+            }
+
+            if (simCourse !== 'なし' && passesAreaCriteria) {
+                // コース・カテゴリ別のアジャスト率を逆算して適用
+                let baseEnroll = advSimCourses[simCourse].cats[simCat].enroll;
+                let adjustEnrollDiff = getSimAdjustment(simCourse, simCat);
+                let computedAdjPct = 0;
+                if (baseEnroll > 0) {
+                    computedAdjPct = (adjustEnrollDiff / baseEnroll) * 100;
+                } else if (adjustEnrollDiff > 0) {
+                    computedAdjPct = 99999;
+                }
+
+                let weight = 1 * (1 + (computedAdjPct / 100));
+
+                if (validCategories.includes(simCat)) {
+                    areaAdvStats[areaName].r9[simCat] += weight;
+                }
+                areaAdvStats[areaName].r9.totalApp += weight;
+
+                if (simPassed && simEnrolled) {
+                    areaAdvStats[areaName].r9.enroll += weight;
+                }
+            }
+        });
+
+        // 移行人数カウンターの反映
+        document.getElementById('mig1Count').textContent = migCount[1] + ' 名';
+        document.getElementById('mig2Count').textContent = migCount[2] + ' 名';
+        document.getElementById('mig3Count').textContent = migCount[3] + ' 名';
+        document.getElementById('mig4Count').textContent = migCount[4] + ' 名';
+
+        // コース別の内訳予測カードのレンダリング
+        const courseSimList = document.getElementById('advSimCourseList');
+        courseSimList.innerHTML = '';
+        
+        let r9TotalEnrolled = 0;
+
+        Object.keys(advSimCourses).forEach(cName => {
+            let data = advSimCourses[cName];
+            r9TotalEnrolled += data.enroll;
+
+            const card = document.createElement('div');
+            card.className = "bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between text-xs";
+            
+            let catDetailList = [];
+            validCategories.forEach(cat => {
+                let catData = data.cats[cat];
+                let savedDiffVal = getSimAdjustment(cName, cat);
+
+                // 叡智のFDスロットなどを常に解放
+                if (catData.app > 0 || savedDiffVal !== 0 || (cName === '叡智' && cat === 'FD')) {
+                    let inputId = 'adjInput-' + cName + '-' + cat;
+                    
+                    // 出願調整率％の算出表示用
+                    let pctLabel = "";
+                    if (catData.enroll > 0) {
+                        let pct = (savedDiffVal / catData.enroll) * 100;
+                        pctLabel = (pct >= 0 ? '+' : '') + pct.toFixed(0) + '%';
+                    } else if (savedDiffVal > 0) {
+                        pctLabel = "***%"; // 0名からの増減は***表示
+                    } else {
+                        pctLabel = "0%";
+                    }
+
+                    catDetailList.push(
+                        '<div class="flex flex-col py-1.5 border-b border-dashed border-slate-200">' +
+                            '<div class="flex justify-between items-center mb-1">' +
+                                '<span class="font-bold text-slate-600">' + cat + '想定:</span>' +
+                                '<span class="text-slate-800 font-semibold">' + catData.adjustedApp + '名 <span class="text-[10px] text-indigo-600 font-bold">(' + catData.adjustedEnroll + ')</span></span>' +
+                            '</div>' +
+                            '<div class="flex justify-between items-center text-[10px] text-slate-500 mt-1">' +
+                                '<span class="text-[9px] bg-slate-200 px-1 py-0.5 rounded text-slate-600 font-bold">調整率: ' + pctLabel + '</span>' +
+                                '<div class="flex items-center gap-1">' +
+                                    '<span>手続:</span>' +
+                                    '<input type="number" id="' + inputId + '" value="' + savedDiffVal + '" onchange="updateSimAdjustment(\'' + cName + '\', \'' + cat + '\', this.value)" class="w-12 text-center border rounded bg-white text-indigo-700 font-bold focus:ring-1 focus:ring-indigo-400 focus:outline-none">' +
+                                    '<span class="font-bold">名</span>' +
+                                '</div>' +
+                            '</div>' +
+                        '</div>'
+                    );
+                }
+            });
+
+            if (catDetailList.length === 0) {
+                catDetailList.push('<div class="text-slate-400 italic text-center py-2">想定出願者なし</div>');
+            }
+
+            card.innerHTML = `
+                <div>
+                    <div class="flex justify-between items-start border-b pb-2 mb-3">
+                        <div>
+                            <span class="text-[10px] font-bold text-indigo-700 block">R9想定</span>
+                            <h5 class="text-sm font-bold text-slate-900">${cName}</h5>
+                        </div>
+                        <span class="text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
+                            定員: ${data.capacity}名
+                        </span>
+                    </div>
+                    <div class="space-y-1 mb-3">
+                        <div class="flex justify-between text-[11px]">
+                            <span class="text-slate-500">手続予測総数:</span>
+                            <span class="font-extrabold text-slate-900 text-sm text-indigo-700">${data.enroll} 名</span>
+                        </div>
+                        <div class="flex justify-between text-[11px]">
+                            <span class="text-slate-500">定員充足率:</span>
+                            <span class="font-bold text-indigo-600">${((data.enroll / data.capacity) * 100).toFixed(0)}%</span>
+                        </div>
+                    </div>
+                    <div class="space-y-1 bg-white p-2.5 rounded-lg border border-slate-100 font-medium">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1 border-b pb-0.5">区分 [出願数 ➔ 手続想定]</span>
+                        ${catDetailList.join('')}
+                    </div>
+                </div>
+            `;
+            courseSimList.appendChild(card);
+        });
+
+        // 総合予測情報の反映
+        document.getElementById('advSimTotalEnrolled').textContent = r9TotalEnrolled;
+        let finalDiff = r9TotalEnrolled - r8TotalActualEnrolled;
+        const totalDiffEl = document.getElementById('advSimTotalDiff');
+        
+        let diffText = '';
+        if (finalDiff > 0) {
+            totalDiffEl.className = "text-emerald-400 font-bold text-sm block mt-1";
+            diffText = '前年度（R8）手続き実績比: +' + finalDiff + '名 増加予測';
+        } else if (finalDiff < 0) {
+            totalDiffEl.className = "text-rose-400 font-bold text-sm block mt-1";
+            diffText = '前年度（R8）手続き実績比: ' + finalDiff + '名 減少予測';
+        } else {
+            totalDiffEl.className = "text-slate-400 text-sm block mt-1";
+            diffText = '前年度（R8）手続き実績と同等';
+        }
+        totalDiffEl.textContent = diffText;
+
+        // 地区別 A, B, C, H, FD, FH, T想定マトリクスのレンダリング
+        const advSimTableBody = document.getElementById('advSimTableBody');
+        advSimTableBody.innerHTML = '';
+
+        let sortedAreas = Object.keys(areaAdvStats).sort((a, b) => areaAdvStats[b].r8.totalApp - areaAdvStats[a].r8.totalApp);
+        
+        let totals = { r8App: 0, r8Enroll: 0, r9A: 0, r9B: 0, r9C: 0, r9H: 0, r9FD: 0, r9FH: 0, r9T: 0, r9TotalApp: 0, r9Enroll: 0 };
+
+        sortedAreas.forEach(area => {
+            let stats = areaAdvStats[area];
+            
+            // 地区ごとの各区分における丸められた実表示数を算出
+            let r9A_round = Math.round(stats.r9.A);
+            let r9B_round = Math.round(stats.r9.B);
+            let r9C_round = Math.round(stats.r9.C);
+            let r9H_round = Math.round(stats.r9.H);
+            let r9FD_round = Math.round(stats.r9.FD);
+            let r9FH_round = Math.round(stats.r9.FH);
+            let r9T_round = Math.round(stats.r9.T);
+
+            // 【完全一致ロジック】全体の合計数は、各々の丸め込み値の単純和で構成
+            let roundedTotalApp = r9A_round + r9B_round + r9C_round + r9H_round + r9FD_round + r9FH_round + r9T_round;
+            let roundedEnroll = Math.round(stats.r9.enroll);
+
+            totals.r8App += stats.r8.totalApp;
+            totals.r8Enroll += stats.r8.enroll;
+            totals.r9A += r9A_round;
+            totals.r9B += r9B_round;
+            totals.r9C += r9C_round;
+            totals.r9H += r9H_round;
+            totals.r9FD += r9FD_round;
+            totals.r9FH += r9FH_round;
+            totals.r9T += r9T_round;
+            totals.r9TotalApp += roundedTotalApp;
+            totals.r9Enroll += roundedEnroll;
+
+            let diffEnroll = roundedEnroll - stats.r8.enroll;
+            let diffEnrollStr = diffEnroll > 0 ? '+' + diffEnroll : String(diffEnroll);
+
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-slate-50 border-b border-slate-100 text-center";
+            tr.innerHTML = `
+                <td class="sticky-col px-4 py-3 font-semibold text-slate-800 bg-white text-left">${area}</td>
+                <td class="px-2 py-3 border-l border-slate-100 font-medium text-slate-700 bg-indigo-50/10">${r9A_round} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-blue-50/10 font-medium text-slate-700">${r9B_round} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-teal-50/10 font-medium text-slate-700">${r9C_round} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-emerald-50/10 font-medium text-slate-700">${r9H_round} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-amber-50/10 font-medium text-slate-700">${r9FD_round} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-orange-50/10 font-medium text-slate-700">${r9FH_round} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-purple-50/10 font-bold text-purple-700">${r9T_round} 名</td>
+                <td class="px-3 py-3 border-l border-slate-200 font-bold text-slate-800">
+                    <span>${roundedTotalApp} 名</span>
+                </td>
+                <td class="px-4 py-3 border-l border-slate-200 bg-rose-50/20 font-bold text-rose-950">
+                    <span>${roundedEnroll} 名</span>
+                    <span class="text-xs block text-rose-500 font-medium">(${diffEnrollStr})</span>
+                </td>
+            `;
+            advSimTableBody.appendChild(tr);
+        });
+
+        // 地区別合計手続き数の調整反映（完全一致処理）
+        let totalDiffEnroll = totals.r9Enroll - totals.r8Enroll;
+        let totalDiffEnrollStr = totalDiffEnroll > 0 ? '+' + totalDiffEnroll : String(totalDiffEnroll);
+
+        const foot = document.getElementById('advSimTableFoot');
+        foot.innerHTML = `
+            <tr class="bg-slate-100 text-slate-900 font-bold">
+                <td class="sticky-col px-4 py-3 text-left bg-slate-100">合計</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-indigo-50/30">${totals.r9A} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-blue-50/30">${totals.r9B} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-teal-50/30">${totals.r9C} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-emerald-50/30">${totals.r9H} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-amber-50/30">${totals.r9FD} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-orange-50/30">${totals.r9FH} 名</td>
+                <td class="px-2 py-3 border-l border-slate-200 bg-purple-100/30 text-purple-900">${totals.r9T} 名</td>
+                <td class="px-3 py-3 border-l border-slate-200">
+                    <span>${totals.r9TotalApp} 名</span>
+                </td>
+                <td class="px-4 py-3 border-l border-slate-200 bg-rose-100/40 text-rose-950 text-base">
+                    <span>${totals.r9Enroll} 名</span>
+                    <span class="text-xs block text-rose-600 font-semibold">(${totalDiffEnrollStr})</span>
+                </td>
+            </tr>
+        `;
+    }
+
+    // タブ切り替え
+    function switchTab(tabId) {
+        activeTab = tabId;
+        const tabs = ['report', 'area', 'advancedSim'];
+        tabs.forEach(t => {
+            const btn = document.getElementById('tabBtn-' + t);
+            const content = document.getElementById('tabContent-' + t);
+            if (t === tabId) {
+                btn.className = "px-5 py-3 font-bold text-sm border-b-2 border-indigo-600 text-indigo-600 transition-all flex items-center gap-2";
+                content.classList.remove('hidden');
+            } else {
+                btn.className = "px-5 py-3 font-medium text-sm text-slate-500 border-b-2 border-transparent hover:text-slate-700 transition-all flex items-center gap-2";
+                content.classList.add('hidden');
+            }
+        });
+
+        if (tabId === 'report') {
+            generateReport();
+        } else if (tabId === 'area') {
+            generateAreaReport();
+        } else if (tabId === 'advancedSim') {
+            runAdvancedSimulation();
+        }
+    }
+
+    // 既存の基本ボーダーシミュレーター計算
+    function runSimulation() {
+        return;
+    }
+</script>
+</body>
+</html>
